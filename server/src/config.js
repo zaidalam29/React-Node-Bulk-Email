@@ -31,6 +31,7 @@ export const config = {
   timeZone: process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
 
   uploadDir: path.resolve(process.env.UPLOAD_DIR || path.join(here, '..', 'uploads')),
+  logDir: path.resolve(process.env.LOG_DIR || path.join(here, '..', 'logs')),
   clientDist: path.resolve(here, '..', '..', 'client', 'dist'),
 
   maxExcelSizeMb: int(process.env.MAX_EXCEL_SIZE_MB, 10),

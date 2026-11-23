@@ -4,6 +4,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { config } from './config.js';
 import { AppError } from './errors.js';
 import { markRow, readWorkbook, saveWorkbook } from './excel.js';
+import { log } from './logger.js';
 import { createTransport, describeSmtpError, isFatalError, isTransientError } from './mailer.js';
 import { emit, allSessions } from './sessions.js';
 import { findUnknownPlaceholders, htmlToText, renderTemplate } from './template.js';
@@ -33,6 +34,7 @@ function setStatus(session, status, message = '') {
   job.status = status;
   job.message = message;
   if (!ACTIVE.has(status)) job.finishedAt = Date.now();
+  log.info(`[job ${job.id.slice(0, 8)}] status=${status}${message ? ` — ${message}` : ''}`);
   emit(session, 'status', { status, message, counters: job.counters });
 }
 
@@ -133,8 +135,14 @@ async function runJob(session, transport) {
         await sendWithRetry(transport, buildMessage(job, item));
         markRow(worksheet, statusCols, item.rowNumber, 'sent');
         result = { rowNumber: item.rowNumber, to: item.to, status: 'sent', at: Date.now() };
+        log.info(`[job ${job.id.slice(0, 8)}] ✔ row ${item.rowNumber} sent to ${item.to}`);
       } catch (err) {
         const error = describeSmtpError(err);
+        log.warn(
+          `[job ${job.id.slice(0, 8)}] ✘ row ${item.rowNumber} failed for ${item.to}:`,
+          `code=${err?.code ?? '-'} smtp=${err?.responseCode ?? '-'}`,
+          err?.response || err?.message,
+        );
         markRow(worksheet, statusCols, item.rowNumber, 'failed', error);
         result = { rowNumber: item.rowNumber, to: item.to, status: 'failed', error, at: Date.now() };
         if (isFatalError(err)) fatalMessage = error;
@@ -143,7 +151,7 @@ async function runJob(session, transport) {
       try {
         await saveWorkbook(workbook, session.excelPath);
       } catch (err) {
-        console.error('[job] Excel save failed', err);
+        log.error(`[job ${job.id.slice(0, 8)}] Excel save failed`, err);
         fatalMessage ||= `Could not save the Excel file: ${err.message}`;
       }
 
@@ -200,6 +208,7 @@ export async function startJob(session, { creds, attachments, attachmentDir, ...
     try {
       await transport.verify();
     } catch (err) {
+      log.warn(`Gmail login failed for ${creds.user}: code=${err?.code ?? '-'} smtp=${err?.responseCode ?? '-'}`, err?.response || err?.message);
       throw new AppError(describeSmtpError(err), 400);
     }
 
@@ -243,13 +252,17 @@ export async function startJob(session, { creds, attachments, attachmentDir, ...
     }
 
     session.job = job;
+    log.info(
+      `[job ${job.id.slice(0, 8)}] started by ${creds.user}: ${items.length} to send, ${skips.length} skipped,`,
+      `${attachments.length} attachment(s), delay ${opts.delayMs} ms`,
+    );
     emit(session, 'snapshot', snapshot(session));
 
     if (items.length) {
       const owned = transport;
       transport = null;
       runJob(session, owned).catch((err) => {
-        console.error('[job] crashed', err);
+        log.error(`[job ${session.job.id.slice(0, 8)}] crashed`, err);
         setStatus(session, 'stopped', `Unexpected error: ${err.message}`);
       });
     }

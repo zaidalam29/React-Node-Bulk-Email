@@ -1,4 +1,5 @@
 import multer from 'multer';
+import { log } from './logger.js';
 
 export class AppError extends Error {
   constructor(message, status = 400) {
@@ -22,6 +23,7 @@ export function errorHandler(err, req, res, next) {
     return;
   }
   if (err instanceof AppError) {
+    log.warn(`${req.method} ${req.originalUrl.split('?')[0]}: ${err.message}`);
     res.status(err.status).json({ error: err.message });
     return;
   }
@@ -37,6 +39,6 @@ export function errorHandler(err, req, res, next) {
     res.status(400).json({ error: 'Invalid JSON body.' });
     return;
   }
-  console.error('[error]', err);
+  log.error(`${req.method} ${req.originalUrl.split('?')[0]} failed:`, err);
   res.status(500).json({ error: 'Server error. Please try again in a moment.' });
 }

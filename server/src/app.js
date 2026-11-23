@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { errorHandler } from './errors.js';
+import { requestLogger } from './logger.js';
 import router from './routes.js';
 
 const maskEmail = (email) => {
@@ -29,6 +30,7 @@ export function createApp() {
 
   // Email previews (rendered in a srcdoc iframe) may reference remote images.
   app.use(helmet({ contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:', 'https:'] } } }));
+  app.use(requestLogger);
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));

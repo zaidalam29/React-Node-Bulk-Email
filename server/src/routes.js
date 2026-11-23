@@ -9,6 +9,7 @@ import { AppError } from './errors.js';
 import { buildSampleWorkbook, isValidEmail, readWorkbook } from './excel.js';
 import { cancelJob, isActive, pauseJob, resumeJob, snapshot, startJob } from './jobRunner.js';
 import { describeSmtpError, verifyCredentials } from './mailer.js';
+import { log } from './logger.js';
 import { createSession, deleteSession, getSession } from './sessions.js';
 
 const MB = 1024 * 1024;
@@ -146,7 +147,12 @@ router.post('/sessions', async (req, res) => {
     if (!req.file) throw new AppError('Please select an Excel file.', 400);
     session.originalName = path.basename(fixFilename(req.file.originalname)).replace(/[^\w.\- ()\u0900-\u097F]/g, '_');
     const book = await readWorkbook(session.excelPath);
-    res.status(201).json(summarize(session, book));
+    const summary = summarize(session, book);
+    log.info(
+      `Excel uploaded: "${session.originalName}" session=${session.id.slice(0, 8)}`,
+      `rows=${summary.counts.total} valid=${summary.counts.valid} emailColumn="${book.emailHeader}"`,
+    );
+    res.status(201).json(summary);
   } catch (err) {
     await deleteSession(session.id).catch(() => {});
     throw err;
